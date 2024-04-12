@@ -207,9 +207,10 @@ std::optional<
     IsolatableHWs::getIsotableHWDetails(
         const IsolatableHWs::HW_Details::HwId& id) const
 {
-    auto it = std::find_if(
-        _isolatableHWsList.begin(), _isolatableHWsList.end(),
-        [&id](const auto& isolatableHw) { return isolatableHw.first == id; });
+    auto it = std::find_if(_isolatableHWsList.begin(), _isolatableHWsList.end(),
+                           [&id](const auto& isolatableHw) {
+        return isolatableHw.first == id;
+    });
 
     if (it != _isolatableHWsList.end())
     {
@@ -621,83 +622,54 @@ std::optional<struct pdbg_target*>
     std::string fruUnitDevTreePath{pdbg_target_path(devTreeTgt)};
     std::string fruUnitPdbgClass{pdbg_target_class_name(devTreeTgt)};
 
+    /**
+     * As we have more than one logical dimm under ocmb and ocmb has
+     * LocationCode Return the same target if it is a ocmb
+     */
+    if (fruUnitPdbgClass == "ocmb")
+        return devTreeTgt;
+
     struct pdbg_target* parentFruTarget = nullptr;
-    if ((fruUnitPdbgClass == "ocmb") || (fruUnitPdbgClass == "mem_port") ||
-        (fruUnitPdbgClass == "adc") || (fruUnitPdbgClass == "gpio_expander") ||
-        (fruUnitPdbgClass == "pmic"))
+    std::optional<std::pair<HW_Details::HwId, HW_Details>> parentFruHw =
+        getIsotableHWDetails(HW_Details::HwId(
+            HW_Details::HwId::PhalPdbgClassName(fruUnitPdbgClass)));
+
+    if (!parentFruHw.has_value())
     {
-        /**
-         * FIXME: The assumption is, dimm is parent fru for "ocmb", "mem_port",
-         *        "adc", "gpio_expander", and "pmic" units and those units
-         *        will have only one "dimm" so if something is changed then,
-         *        need to fix this logic.
-         * @note  In phal cec device tree dimm is placed under ocmb->mem_port
-         *        based on dimm pervasive path.
-         */
-        if ((fruUnitPdbgClass == "adc") ||
-            (fruUnitPdbgClass == "gpio_expander") ||
-            (fruUnitPdbgClass == "pmic"))
-        {
-            /**
-             * The "adc", "gpio_expander", and "pmic" units are placed under
-             * ocmb but, dimm is placed under the ocmb so, we need to get the
-             * parent ocmb for the given "adc", "gpio_expander", and "pmic"
-             * units to get the dimm fru target.
-             */
-            devTreeTgt = pdbg_target_parent("ocmb", devTreeTgt);
-        }
-
-        auto dimmCount = 0;
-        struct pdbg_target* lastDimmTgt = nullptr;
-        pdbg_for_each_target("dimm", devTreeTgt, lastDimmTgt)
-        {
-            parentFruTarget = lastDimmTgt;
-            ++dimmCount;
-        }
-
-        if (dimmCount == 0)
-        {
-            log<level::ERR>(
-                std::format("Failed to get the parent dimm target "
-                            "from phal cec device tree for the given phal cec "
-                            "device tree target [{}]",
-                            fruUnitDevTreePath)
-                    .c_str());
-            return std::nullopt;
-        }
-        else if (dimmCount > 1)
-        {
-            log<level::ERR>(
-                std::format("More [{}] dimm targets are present "
-                            "in phal cec device tree for the given phal cec "
-                            " device tree target [{}]",
-                            dimmCount, fruUnitDevTreePath)
-                    .c_str());
-            return std::nullopt;
-        }
+        log<level::ERR>(
+            std::format("Failed to get the parent target from phal cec "
+                        "device tree for the given target [{}]",
+                        fruUnitDevTreePath)
+                .c_str());
+        return std::nullopt;
     }
-    else
+
+    std::string parentPdbgClass =
+        parentFruHw.value().second._parentFruHwId._pdbgClassName._name;
+    if (parentPdbgClass == "dimm")
     {
         /**
-         * FIXME: Today, All FRU parts (units - both(chiplet and non-chiplet))
-         *        are modelled under the respective processor in cec device
-         *        tree so, if something changed then, need to revisit the
-         *        logic which is used to get the FRU details of FRU unit.
+         *  Earlier, the assumption was that dimm was parent of ocmb and
+         * mem_port ocmb was the parent for adc,pmic and gpio_expander We used
+         * to return the parent dimm for these targets But now we can have more
+         * than one logical dimm under a ocmb So We are returning parent ocmb to
+         * avoid confusion as LocationCode is available for ocmb target now.
          */
-        parentFruTarget = pdbg_target_parent("proc", devTreeTgt);
-        if (parentFruTarget == nullptr)
-        {
-            log<level::ERR>(
-                std::format("Failed to get the processor target from phal cec "
-                            "device tree for the given target [{}]",
-                            fruUnitDevTreePath)
-                    .c_str());
-            return std::nullopt;
-        }
+        parentPdbgClass = "ocmb";
+    }
+
+    parentFruTarget = pdbg_target_parent(parentPdbgClass.c_str(), devTreeTgt);
+    if (parentFruTarget == nullptr)
+    {
+        log<level::ERR>(
+            std::format("Failed to get the parent target from phal cec "
+                        "device tree for the given target [{}]",
+                        fruUnitDevTreePath)
+                .c_str());
+        return std::nullopt;
     }
     return parentFruTarget;
 }
-
 std::optional<sdbusplus::message::object_path>
     IsolatableHWs::getFRUInventoryPath(
         const std::pair<LocationCode, InstanceId>& fruDetails,
@@ -742,7 +714,7 @@ std::optional<sdbusplus::message::object_path>
             inventoryPathList->begin(), inventoryPathList->end(),
             [&fruInstId, &fruInvPathLookupFunc, this](const auto& path) {
             return fruInvPathLookupFunc(this->_bus, path, fruInstId);
-        });
+            });
 
         if (fruHwInvPath == inventoryPathList->end())
         {
@@ -1046,7 +1018,7 @@ std::optional<sdbusplus::message::object_path> IsolatableHWs::getInventoryPath(
                  this](const auto& path) {
                 return isolatedHwDetails->second._invPathFuncLookUp(
                     this->_bus, path, uniqIsolateHwKey);
-            });
+                });
 
             if (isolateHwPath == childsInventoryPath->end())
             {
