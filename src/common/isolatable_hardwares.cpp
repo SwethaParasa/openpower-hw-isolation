@@ -646,10 +646,7 @@ std::optional<struct pdbg_target*>
              */
             devTreeTgt = pdbg_target_parent("ocmb", devTreeTgt);
         }
-        /**
-         * Though ocmb has Location Code available now we need to use dimm
-         * location code in case of bonnell.
-         */
+
         auto dimmCount = 0;
         struct pdbg_target* lastDimmTgt = nullptr;
         pdbg_for_each_target("dimm", devTreeTgt, lastDimmTgt)
@@ -665,6 +662,16 @@ std::optional<struct pdbg_target*>
                             "from phal cec device tree for the given phal cec "
                             "device tree target [{}]",
                             fruUnitDevTreePath)
+                    .c_str());
+            return std::nullopt;
+        }
+        else if (dimmCount > 1)
+        {
+            log<level::ERR>(
+                std::format("More [{}] dimm targets are present "
+                            "in phal cec device tree for the given phal cec "
+                            " device tree target [{}]",
+                            dimmCount, fruUnitDevTreePath)
                     .c_str());
             return std::nullopt;
         }
