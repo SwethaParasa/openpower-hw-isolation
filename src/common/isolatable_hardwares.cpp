@@ -637,7 +637,7 @@ std::optional<struct pdbg_target*>
          */
         if ((fruUnitPdbgClass == "adc") ||
             (fruUnitPdbgClass == "gpio_expander") ||
-            (fruUnitPdbgClass == "pmic"))
+            (fruUnitPdbgClass == "pmic") || (fruUnitPdbgClass == "mem_port"))
         {
             /**
              * The "adc", "gpio_expander", and "pmic" units are placed under
@@ -647,28 +647,11 @@ std::optional<struct pdbg_target*>
              */
             devTreeTgt = pdbg_target_parent("ocmb", devTreeTgt);
         }
-        /**
-         * Though ocmb has Location Code available now we need to use dimm
-         * location code in case of bonnell.
-         */
-        auto dimmCount = 0;
-        struct pdbg_target* lastDimmTgt = nullptr;
-        pdbg_for_each_target("dimm", devTreeTgt, lastDimmTgt)
-        {
-            parentFruTarget = lastDimmTgt;
-            ++dimmCount;
-        }
-
-        if (dimmCount == 0)
-        {
-            log<level::ERR>(
-                std::format("Failed to get the parent dimm target "
-                            "from phal cec device tree for the given phal cec "
-                            "device tree target [{}]",
-                            fruUnitDevTreePath)
-                    .c_str());
-            return std::nullopt;
-        }
+	/** As ocmb has location code(which matches either dimm location code
+ 	 *  or the planar based on the type of the system), returning ocmb target
+ 	 *  for "adc", "pmic",  "gpio_expander", "mem_port" to support all the systems.
+ 	 */
+	return devTreeTgt;
     }
     else
     {
