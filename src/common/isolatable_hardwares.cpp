@@ -1083,6 +1083,8 @@ IsItIsoHwInvPath itemPrettyName(sdbusplus::bus::bus& bus,
     {
         auto retPrettyName = utils::getDBusPropertyVal<std::string>(
             bus, objPath, "xyz.openbmc_project.Inventory.Item", "PrettyName");
+	if(std::get<std::string>(prettyName)=="OpenCAPI Memory Buffer")
+		return retPrettyName == "OpenCAPI Memory Buffer 2A";
 
         return retPrettyName == std::get<std::string>(prettyName);
     }
