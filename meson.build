@@ -113,3 +113,4 @@ configure_file(
     )
 
 subdir('src')
+subdir('isolation')
