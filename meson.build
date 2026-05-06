@@ -98,19 +98,5 @@ executable('openpower-hw-isolation',
            install : true
           )
 
-systemd_system_unit_dir = dependency('systemd').get_variable(
-    pkgconfig: 'systemdsystemunitdir')
-
-hw_isolation_service_unit = 'service_files/org.open_power.HardwareIsolation.service'
-configure_file(
-    configuration: {
-        'BUSNAME' : get_option('HW_ISOLATION_BUSNAME'),
-    },
-    input: hw_isolation_service_unit,
-    install : true,
-    install_dir: systemd_system_unit_dir,
-    output: '@PLAINNAME@'
-    )
-
 subdir('src')
 subdir('tools')
